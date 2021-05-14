@@ -1,91 +1,76 @@
-# MIT License
-
-# Copyright (c) 2020 Joseph Auckley, Matthew O'Kelly, Aman Sinha, Hongrui Zheng
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
-FROM ubuntu:18.04
+FROM ros:melodic-robot-bionic
 
 ENV IM_IN_DOCKER Yes
 
 RUN apt-get update --fix-missing && \
     apt-get install -y \
-    python3-dev python3-pip
+    python-pip
 
 RUN apt-get install -y libzmq3-dev \
-                       nano \
                        git \
-                       unzip \
                        build-essential \
                        autoconf \
                        libtool \
                        libeigen3-dev \
                        cmake \
-                       emacs
+                       vim \
+                       ros-melodic-ackermann-msgs \
+                       ros-melodic-map-server \
+                       ros-melodic-genpy
+
 
 RUN cp -r /usr/include/eigen3/Eigen /usr/include
 
-RUN git clone https://github.com/google/protobuf.git && \
+RUN git clone https://github.com/protocolbuffers/protobuf.git && \
     cd protobuf && \
+    git checkout tags/v3.8.0 && \
+    git submodule update --init --recursive && \
     ./autogen.sh && \
     ./configure && \
-    make && \
+    make -j8 && \
     make install && \
     ldconfig && \
     make clean && \
     cd .. && \
     rm -r protobuf
 
-RUN pip3 install --upgrade pip
+RUN pip install --upgrade pip
 
-RUN pip3 install numpy \
-                scipy \
-                numba \
-                matplotlib \
+RUN pip install numpy==1.16.0 \
+                scipy==1.2.0 \
                 zmq \
                 pyzmq \
                 Pillow \
                 gym \
-                protobuf \
+                protobuf==3.8.0 \
                 pyyaml \
-                msgpack==0.6.2
+                llvmlite==0.31.0 \
+                numba==0.47.0
 
-RUN pip3 install torch==1.3.1+cpu torchvision==0.4.2+cpu -f https://download.pytorch.org/whl/torch_stable.html
 
-RUN mkdir /simulator
-COPY . /simulator
+# RUN git clone https://github.com/f1tenth/f1tenth_gym
+RUN mkdir /f1tenth_gym
+COPY ./f1tenth_gym /f1tenth_gym
 
-RUN cd /simulator && \
-    mkdir -p build && \
+RUN cd f1tenth_gym && \
+    mkdir build && \
     cd build && \
     cmake .. && \
     make
 
-RUN cp /simulator/build/sim_requests_pb2.py /simulator/gym/
+RUN cd f1tenth_gym && \
+    cp ./build/sim_requests_pb2.py ./gym/ && \
+    pip install -e gym/
 
-RUN cd /simulator && \
-    pip3 install -e gym/
+RUN /bin/bash -c "source /opt/ros/melodic/setup.bash; mkdir -p catkin_ws/src; cd catkin_ws; catkin_make"
 
-WORKDIR /simulator
+RUN mkdir /catkin_ws/src/f1tenth_gym_ros
 
-EXPOSE 5557
-EXPOSE 5558
+COPY . /catkin_ws/src/f1tenth_gym_ros
+
+RUN /bin/bash -c "source /opt/ros/melodic/setup.bash; cd catkin_ws; catkin_make; source devel/setup.bash"
 
 
-ENTRYPOINT ["/bin/bash"]
+CMD ["/catkin_ws/src/f1tenth_gym_ros/start.sh"]
+
+# CMD ["roslaunch", "package file.launch"]
